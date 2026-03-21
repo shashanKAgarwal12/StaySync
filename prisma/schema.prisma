@@ -1,0 +1,275 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────────────────────────────
+// Enums
+// ────────────────────────────────────────────────
+
+enum UserRole {
+  STUDENT
+  OWNER
+  ADMIN
+}
+
+enum PropertyType {
+  PG
+  HOSTEL
+  FLAT
+  INDEPENDENT_ROOM
+  SHARED_ROOM
+}
+
+enum GenderPreference {
+  BOYS
+  GIRLS
+  COED
+  ANY
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REJECTED
+  COMPLETED
+}
+
+enum VegPreference {
+  VEG
+  NON_VEG
+  EGGITARIAN
+  ANY
+}
+
+enum ToleranceLevel {
+  TOLERATES
+  PREFERS_NOT
+  STRICTLY_NO
+  DOES_IT
+}
+
+enum Level {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SleepSchedule {
+  EARLY
+  LATE
+  FLEXIBLE
+  NIGHT_OWL
+}
+
+enum StudyTime {
+  MORNING
+  AFTERNOON
+  NIGHT
+  FLEXIBLE
+}
+
+enum SocialStyle {
+  INTROVERT
+  EXTROVERT
+  AMBIVERT
+}
+
+enum MatchStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  BLOCKED
+}
+
+// ────────────────────────────────────────────────
+// Models
+// ────────────────────────────────────────────────
+
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  fullName    String?
+  phone       String?   @unique
+  role        UserRole  @default(STUDENT)
+  avatarUrl   String?   
+  college     String?
+  city        String?   @default("Jaipur")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  ownedProperties     Property[]           @relation("OwnerProperties")
+  bookings            Booking[]            @relation("StudentBookings")
+  reviews             Review[]             @relation("Reviewer")
+  favorites           Favorite[]           @relation("UserFavorites")
+  roommatePreference  RoommatePreference?  @relation("UserRoommatePref")
+  roommateMatchesAsA  RoommateMatch[]      @relation("UserAMatches")
+  roommateMatchesAsB  RoommateMatch[]      @relation("UserBMatches")
+  roommateMessages    RoommateMessage[]    @relation("MessageSender")
+
+  @@index([email])
+  @@index([phone])
+  @@map("users")
+}
+
+model Property {
+  id                  String           @id @default(uuid())
+  title               String
+  description         String?
+  type                PropertyType
+  genderPreference    GenderPreference @default(ANY)
+  address             String
+  city                String           @default("Jaipur")
+  locality            String?
+  latitude            Float?
+  longitude           Float?
+  pricePerMonth       Int
+  securityDeposit     Int?
+  availableFrom       DateTime?
+  roomsAvailable      Int              @default(1)
+  totalBeds           Int?
+  amenities           String[]         
+  images              String[]         
+  isVerified          Boolean          @default(false)
+  isActive            Boolean          @default(true)
+  ownerId             String
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  owner               User             @relation("OwnerProperties", fields: [ownerId], references: [id], onDelete: Cascade)
+  bookings            Booking[]
+  reviews             Review[]
+  favorites           Favorite[]
+
+  @@index([ownerId])
+  @@index([city, locality, isVerified])
+  @@map("properties")
+}
+
+model Booking {
+  id          String        @id @default(uuid())
+  propertyId  String
+  studentId   String
+  startDate   DateTime
+  endDate     DateTime?
+  status      BookingStatus @default(PENDING)
+  totalAmount Int?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  property    Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  student     User          @relation("StudentBookings", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, studentId])
+  @@map("bookings")
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  propertyId String
+  reviewerId String
+  rating     Int      // 1–5
+  comment    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  reviewer   User     @relation("Reviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId])
+  @@map("reviews")
+}
+
+model Favorite {
+  id         String   @id @default(uuid())
+  userId     String
+  propertyId String
+  createdAt  DateTime @default(now())
+
+  user       User     @relation("UserFavorites", fields: [userId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, propertyId])
+  @@map("favorites")
+}
+
+// ────────────────────────────────────────────────
+// Roommate Matching
+// ────────────────────────────────────────────────
+
+model RoommatePreference {
+  id              String         @id @default(uuid())
+  userId          String         @unique
+  user            User           @relation("UserRoommatePref", fields: [userId], references: [id], onDelete: Cascade)
+
+  ageRangeMin     Int?
+  ageRangeMax     Int?
+  genderPref      GenderPreference?
+  vegNonVeg       VegPreference?
+  smoking         ToleranceLevel?
+  drinking        ToleranceLevel?
+  cleanliness     Level?
+  noiseLevel      Level?
+  sleepSchedule   SleepSchedule?
+  studyTime       StudyTime?
+  socialStyle     SocialStyle?
+  petsAllowed     Boolean        @default(false)
+  hobbies         String[]
+  dealBreakers    String[]
+
+  matchScoreWeight Float?        @default(1.0)
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("roommate_preferences")
+}
+
+model RoommateMatch {
+  id                 String      @id @default(uuid())
+  userAId            String
+  userBId            String
+
+  userA              User        @relation("UserAMatches", fields: [userAId], references: [id], onDelete: Cascade)
+  userB              User        @relation("UserBMatches", fields: [userBId], references: [id], onDelete: Cascade)
+
+  compatibilityScore Float?
+  matchReason        String?
+  status             MatchStatus @default(PENDING)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  messages           RoommateMessage[]
+
+  @@unique([userAId, userBId])
+  @@index([status])
+  @@map("roommate_matches")
+}
+
+model RoommateMessage {
+  id        String        @id @default(uuid())
+  matchId   String
+  senderId  String
+  content   String
+  sentAt    DateTime      @default(now())
+
+  match     RoommateMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  sender    User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+  @@map("roommate_messages")
+}
